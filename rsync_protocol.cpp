@@ -784,3 +784,4 @@ QByteArray RsyncProtocol::receiveFileData(qint64 expectedSize)
 
     return result;
 }
+
