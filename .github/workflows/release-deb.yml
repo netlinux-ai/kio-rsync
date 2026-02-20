@@ -1,0 +1,89 @@
+name: Build .deb package
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake \
+            extra-cmake-modules \
+            libkf5kio-dev libkf5i18n-dev \
+            qtbase5-dev
+
+      - name: Build
+        run: |
+          cmake -B build -DCMAKE_INSTALL_PREFIX=/usr
+          cmake --build build -j$(nproc)
+
+      - name: Determine version
+        id: version
+        run: |
+          rev=${{ github.run_number }}
+          echo "version=1.0-${rev}netlinux1" >> "$GITHUB_OUTPUT"
+          echo "tag=v1.0-${rev}netlinux1" >> "$GITHUB_OUTPUT"
+
+      - name: Package with checkinstall
+        run: |
+          sudo apt-get install -y checkinstall
+          sudo checkinstall --default \
+            --pkgname=kio-rsync \
+            --pkgversion="${{ steps.version.outputs.version }}" \
+            --maintainer="graham@netlinux.co.uk" \
+            --requires="libkf5kiocore5" \
+            --pakdir=. \
+            --install=no \
+            --fstrans=no \
+            cmake --install build
+
+      - name: Repack .deb for reprepro compatibility
+        run: |
+          DEB=$(ls kio-rsync_*.deb)
+          sudo chmod 666 "$DEB"
+          mkdir repack && cd repack
+          ar x "../$DEB"
+          for f in *.zst; do
+            [ -f "$f" ] || continue
+            zstd -d "$f"
+            xz "${f%.zst}"
+            rm "$f"
+          done
+          rm "../$DEB"
+          ar rcs "../$DEB" debian-binary control.tar.xz data.tar.xz
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: kio-rsync ${{ steps.version.outputs.version }}
+          body: |
+            KIO worker for native rsync:// protocol support in KDE.
+
+            Install: `sudo dpkg -i kio-rsync_*.deb`
+          files: kio-rsync_*.deb
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Notify package repository
+        run: |
+          sleep 5
+          SIGNATURE=$(echo -n '{"repo":"netlinux-ai/kio-rsync","tag":"${{ steps.version.outputs.tag }}"}' \
+            | openssl dgst -sha256 -hmac "${{ secrets.WEBHOOK_SECRET }}" -binary \
+            | xxd -p -c 256)
+          curl -sf -X POST \
+            -H "Content-Type: application/json" \
+            -H "X-Webhook-Signature: sha256=${SIGNATURE}" \
+            -d '{"repo":"netlinux-ai/kio-rsync","tag":"${{ steps.version.outputs.tag }}"}' \
+            https://packages.netlinux.co.uk/webhook/update-repo

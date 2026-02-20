@@ -1,0 +1,31 @@
+{
+    "KDE-KIO-Protocols": {
+        "rsync": {
+            "Class": ":internet",
+            "Icon": "folder-remote",
+            "protocol": "rsync",
+            "copyFromFile": true,
+            "copyToFile": false,
+            "deleting": false,
+            "input": "none",
+            "listing": [
+                "Name",
+                "Type",
+                "Size",
+                "Date",
+                "Access",
+                "Owner",
+                "Group",
+                "Link"
+            ],
+            "makedir": false,
+            "maxInstances": 10,
+            "maxInstancesPerHost": 3,
+            "moving": false,
+            "opening": false,
+            "output": "filesystem",
+            "reading": true,
+            "writing": false
+        }
+    }
+}
